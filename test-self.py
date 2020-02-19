@@ -98,7 +98,7 @@ def evaluate(model, path, iou_thres, conf_thres, nms_thres, img_size, batch_size
     model.eval()
 
     # Get dataloader
-    dataset = NYUv2Loader_origin_color('/Users/youzunzhi/Downloads/nyuv2-seg/', 128)
+    dataset = NYUv2Loader_origin_color('/home/u2263506/data/nyuv2-seg/', 128)
     dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=batch_size, shuffle=False, num_workers=1
     )
