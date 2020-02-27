@@ -51,10 +51,15 @@ class NYUv2Loader_origin_color(Dataset):
 
     def __getitem__(self, index):
         origin_img_path = self.files['origin'][index].rstrip()
-        color_img_path = origin_img_path.replace('test', 'test_color_0_ori_size')
+        color_img_path = origin_img_path.replace('test', 'test_color_0_128')
         # color_img_path = origin_img_path
         origin_img = Image.open(origin_img_path).convert('RGB')
         color_img = Image.open(color_img_path).convert('RGB')
+        if color_img_path.find('test_color_0_128')!=-1:
+            assert self.img_size[0] == 128
+            origin_img = Resize(288)(origin_img)
+            origin_img = CenterCrop((256, 256))(origin_img)
+            origin_img = origin_img.resize((self.img_size[0], self.img_size[1]))
         origin_img = origin_img.resize((self.img_size[0], self.img_size[1]))
         color_img = color_img.resize((self.img_size[0], self.img_size[1]))
         origin_img = transforms.ToTensor()(origin_img)
@@ -139,12 +144,12 @@ if __name__ == "__main__":
     parser.add_argument("--conf_thres_eval", type=float, default=0.001, help="object confidence threshold")
     parser.add_argument("--nms_thres", type=float, default=0.5, help="iou thresshold for non-maximum suppression")
     parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
-    parser.add_argument("--img_size", type=int, default=416, help="size of each image dimension")
+    parser.add_argument("--img_size", type=int, default=128, help="size of each image dimension")
     opt = parser.parse_args()
     print(opt)
 
     experiment_name = f'test-self_{opt.conf_thres_gt}_{opt.conf_thres_eval}_{opt.img_size}'
-    logger = setup_logger("YOLOv2", 'runs/', 0)
+    logger = setup_logger("YOLOv2", 'runs/', experiment_name)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -175,6 +180,6 @@ if __name__ == "__main__":
 
     logger.info("Average Precisions:")
     for i, c in enumerate(ap_class):
-        print(f"+ Class '{c}' ({class_names[c]}) - AP: {AP[i]}")
+        logger.info(f"+ Class '{c}' ({class_names[c]}) - AP: {AP[i]}")
 
     logger.info(f"mAP: {AP.mean()}")
