@@ -106,8 +106,8 @@ def make_origin_outputs_to_targets(origin_outputs):
         if origin_outputs[i] is not None:
             output = np.asarray(origin_outputs[i])
             for box in output:
-                if box[-1] in [0, 56, 57, 59, 60, 61, 62, 71, 72]:
-                    target.append([i, float(box[-1]), box[0], box[1], box[2], box[3]])
+                # if box[-1] in [0, 56, 57, 59, 60, 61, 62, 71, 72]:
+                target.append([i, float(box[-1]), box[0], box[1], box[2], box[3]])
     target = torch.from_numpy(np.asarray(target))
     target = target.type(torch.float32)
     return target
@@ -143,7 +143,7 @@ if __name__ == "__main__":
     opt = parser.parse_args()
     print(opt)
 
-    experiment_name = f'test-self_{opt.conf_thres_gt}_{opt.conf_thres_eval}'
+    experiment_name = f'test-self_{opt.conf_thres_gt}_{opt.conf_thres_eval}_{opt.img_size}'
     logger = setup_logger("YOLOv2", 'runs/', 0)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
