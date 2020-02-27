@@ -50,75 +50,45 @@ class NYUv2Loader_origin_color(Dataset):
 
     def __getitem__(self, index):
         origin_img_path = self.files['origin'][index].rstrip()
-        color_img_path = origin_img_path.replace('test', 'test_color_0')
+        color_img_path = origin_img_path.replace('test', 'test_color_0_ori_size')
         # color_img_path = origin_img_path
-
         origin_img = Image.open(origin_img_path).convert('RGB')
         color_img = Image.open(color_img_path).convert('RGB')
-        if self.img_size[0] != 'same' or self.img_size[1] != 'same':
-            origin_img = Resize(288)(origin_img)
-            origin_img = CenterCrop((256, 256))(origin_img)
         origin_img = origin_img.resize((self.img_size[0], self.img_size[1]))
         color_img = color_img.resize((self.img_size[0], self.img_size[1]))
-        # origin_img = np.array(origin_img, dtype=np.uint8)
-        # color_img = np.array(color_img, dtype=np.uint8)
-        #
-        # origin_img = self.transform(origin_img)
-        # color_img = self.transform(color_img)
         origin_img = transforms.ToTensor()(origin_img)
         color_img = transforms.ToTensor()(color_img)
-
+        # origin_img, _ = pad_to_square(origin_img, 0)
+        # color_img, _ = pad_to_square(color_img, 0)
         return origin_img, color_img
 
-    # def transform(self, img):
-    #     # img = imageio.imresize(img, (self.img_size[0], self.img_size[1]))  # uint8 with RGB mode
-    #     img = img[:, :, ::-1]  # RGB -> BGR
-    #     img = img.astype(np.float64)
-    #     img -= self.mean
-    #     if self.img_norm:
-    #         # Resize scales images from 0 to 255, thus we need
-    #         # to divide by 255.0
-    #         img = img.astype(float) / 255.0
-    #     # NHWC -> NCHW
-    #     img = img.transpose(2, 0, 1)
-    #
-    #     img = torch.from_numpy(img).float()
-    #     if self.gamma:
-    #         import random
-    #         if random.random() < 0.5:
-    #             gamma = random.uniform(0.1, 1.)
-    #         else:
-    #             gamma = random.uniform(1., 10.)
-    #         img = torch.pow(img, gamma)
-    #
-    #     return img
 
-
-def evaluate(model, path, iou_thres, conf_thres, nms_thres, img_size, batch_size):
+def evaluate(model, iou_thres, conf_thres_gt, conf_thres_eval, nms_thres, img_size, batch_size):
     model.eval()
 
     # Get dataloader
-    dataset = NYUv2Loader_origin_color('/home/u2263506/data/nyuv2-seg/', 128)
+    root = '/home/u2263506/data/nyuv2-seg/' if torch.cuda.is_available() else '/Users/youzunzhi/Downloads/nyuv2-seg/'
+    dataset = NYUv2Loader_origin_color(root, img_size)
     dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=batch_size, shuffle=False, num_workers=1
     )
 
-    Tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor
-
     labels = []
     sample_metrics = []  # List of tuples (TP, confs, pred)
-    # for batch_i, (origin_img, color_img) in enumerate(tqdm.tqdm(dataloader, desc="Detecting objects")):
-    for batch_i, (origin_img, color_img) in enumerate(dataloader):
-
-        origin_img = Variable(origin_img.type(Tensor), requires_grad=False)
-        color_img = Variable(color_img.type(Tensor), requires_grad=False)
+    for batch_i, (origin_img, color_img) in enumerate(tqdm.tqdm(dataloader, desc="Detecting objects")):
+    # for batch_i, (origin_img, color_img) in enumerate(dataloader):
+        if torch.cuda.is_available():
+            origin_img = origin_img.cuda()
+            color_img = color_img.cuda()
 
         with torch.no_grad():
             origin_outputs = model(origin_img)
             color_outputs = model(color_img)
-            origin_outputs = non_max_suppression(origin_outputs, conf_thres=conf_thres, nms_thres=nms_thres)
-            color_outputs = non_max_suppression(color_outputs, conf_thres=conf_thres, nms_thres=nms_thres)
+            origin_outputs = non_max_suppression(origin_outputs, conf_thres=conf_thres_gt, nms_thres=nms_thres)
+            color_outputs = non_max_suppression(color_outputs, conf_thres=conf_thres_eval, nms_thres=nms_thres)
             origin_targets = make_origin_outputs_to_targets(origin_outputs)
+            if len(origin_targets):
+                labels += origin_targets[:, 1].tolist()
 
         sample_metrics += get_batch_statistics(color_outputs, origin_targets, iou_threshold=iou_thres)
 
@@ -132,11 +102,13 @@ def evaluate(model, path, iou_thres, conf_thres, nms_thres, img_size, batch_size
 def make_origin_outputs_to_targets(origin_outputs):
     target = []
     for i in range(len(origin_outputs)):
-        output = np.asarray(origin_outputs[i])
-        for box in output:
-            if box[4] > 0.25:
-                target.append([i, box[-1], box[0], box[1], box[2], box[3]])
+        if origin_outputs[i] is not None:
+            output = np.asarray(origin_outputs[i])
+            for box in output:
+                if box[-1] in [0, 56, 57, 59, 60, 61, 62, 71, 72]:
+                    target.append([i, float(box[-1]), box[0], box[1], box[2], box[3]])
     target = torch.from_numpy(np.asarray(target))
+    target = target.type(torch.float32)
     return target
 
 
@@ -162,7 +134,7 @@ if __name__ == "__main__":
     parser.add_argument("--weights_path", type=str, default="weights/yolov3.weights", help="path to weights file")
     parser.add_argument("--class_path", type=str, default="data/coco.names", help="path to class label file")
     parser.add_argument("--iou_thres", type=float, default=0.5, help="iou threshold required to qualify as detected")
-    parser.add_argument("--conf_thres", type=float, default=0.001, help="object confidence threshold")
+    parser.add_argument("--conf_thres", type=float, default=0.8, help="object confidence threshold")
     parser.add_argument("--nms_thres", type=float, default=0.5, help="iou thresshold for non-maximum suppression")
     parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
     parser.add_argument("--img_size", type=int, default=416, help="size of each image dimension")
