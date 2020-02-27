@@ -12,6 +12,7 @@ import time
 import datetime
 import argparse
 import tqdm
+import logging
 
 import torch
 from torch.utils.data import DataLoader
@@ -134,12 +135,16 @@ if __name__ == "__main__":
     parser.add_argument("--weights_path", type=str, default="weights/yolov3.weights", help="path to weights file")
     parser.add_argument("--class_path", type=str, default="data/coco.names", help="path to class label file")
     parser.add_argument("--iou_thres", type=float, default=0.5, help="iou threshold required to qualify as detected")
-    parser.add_argument("--conf_thres", type=float, default=0.8, help="object confidence threshold")
+    parser.add_argument("--conf_thres_gt", type=float, default=0.8, help="object confidence threshold")
+    parser.add_argument("--conf_thres_eval", type=float, default=0.001, help="object confidence threshold")
     parser.add_argument("--nms_thres", type=float, default=0.5, help="iou thresshold for non-maximum suppression")
     parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
     parser.add_argument("--img_size", type=int, default=416, help="size of each image dimension")
     opt = parser.parse_args()
     print(opt)
+
+    experiment_name = f'test-self_{opt.conf_thres_gt}_{opt.conf_thres_eval}'
+    logger = setup_logger("YOLOv2", 'runs/', 0)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -160,16 +165,16 @@ if __name__ == "__main__":
 
     precision, recall, AP, f1, ap_class = evaluate(
         model,
-        path=valid_path,
         iou_thres=opt.iou_thres,
-        conf_thres=opt.conf_thres,
+        conf_thres_gt=opt.conf_thres_gt,
+        conf_thres_eval=opt.conf_thres_eval,
         nms_thres=opt.nms_thres,
         img_size=opt.img_size,
         batch_size=8,
     )
 
-    print("Average Precisions:")
+    logger.info("Average Precisions:")
     for i, c in enumerate(ap_class):
         print(f"+ Class '{c}' ({class_names[c]}) - AP: {AP[i]}")
 
-    print(f"mAP: {AP.mean()}")
+    logger.info(f"mAP: {AP.mean()}")

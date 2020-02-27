@@ -1,5 +1,5 @@
 from __future__ import division
-import math
+import math, os, logging, sys
 import time
 import tqdm
 import torch
@@ -319,3 +319,30 @@ def build_targets(pred_boxes, pred_cls, target, anchors, ignore_thres):
 
     tconf = obj_mask.float()
     return iou_scores, class_mask, obj_mask, noobj_mask, tx, ty, tw, th, tcls, tconf
+
+
+def setup_logger(name, log_path, experiment_name, distributed_rank=0):
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.DEBUG)
+    # don't log results for the non-master process
+    if distributed_rank > 0:
+        return logger
+    ch = logging.StreamHandler(stream=sys.stdout)
+    ch.setLevel(logging.DEBUG)
+    formatter = logging.Formatter("%(message)s")
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+
+    if log_path:
+        if not os.path.exists(log_path):
+            os.mkdir(log_path)
+        # ISOTIMEFORMAT = '%Y-%m-%d-%X'
+        # txt_name = '{}.txt'.format(time.strftime(ISOTIMEFORMAT, time.localtime(time.time())))
+        txt_name = f'{experiment_name}.txt'
+        fh = logging.FileHandler(os.path.join(log_path, txt_name), mode='w')
+        fh.setLevel(logging.DEBUG)
+        fh.setFormatter(formatter)
+        logger.addHandler(fh)
+
+    return logger
+
